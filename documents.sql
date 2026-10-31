@@ -2,13 +2,13 @@
 create table documents (
   id bigserial primary key,
   content text, -- corresponds to the "text chunk"
-  embedding vector(1536) -- 1536 works for OpenAI embeddings
+  embedding vector(2048) -- 2048 works for OpenAI embeddings
 );
 
 
 -- Create a function to search for documents
 create or replace function match_documents (
-  query_embedding vector(1536),
+  query_embedding vector(2048),
   match_threshold float,
   match_count int
 )
