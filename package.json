@@ -7,7 +7,9 @@
     "dev": "vite"
   },
   "dependencies": {
+    "@langchain/textsplitters": "^1.0.2",
     "@supabase/supabase-js": "^2.118.0",
+    "langchain": "^1.6.0",
     "openai": "^4.86.1"
   },
   "devDependencies": {
