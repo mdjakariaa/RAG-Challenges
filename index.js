@@ -1,100 +1,126 @@
-import { openai, supabase } from "./config.js";
+import { supabase } from "./config.js";
+import { pipeline } from "@huggingface/transformers";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-
-/*
-  Challenge: Text Splitters, Embeddings, and Vector Databases!
-    1. Use LangChain to split the content in movies.txt into smaller chunks.
-    2. Use OpenAI's Embedding model to create an embedding for each chunk.
-    3. Insert all text chunks and their corresponding embedding
-       into a Supabase database table.
- */
+import { readFile } from "node:fs/promises";
 
 /* Split movies.txt into text chunks.
 Return LangChain's "output" – the array of Document objects. */
 async function splitDocument(document) {
-  let text;
-  // If running in Node.js (npm start)
-  if (typeof window === "undefined") {
-    const fs = await import("fs/promises");
-    text = await fs.readFile(document, "utf-8");
-  } else {
-    // If running in browser via Vite (npm run dev)
-    const response = await fetch(document);
-    text = await response.text();
+  try {
+    // Read directly from disk in Node.js
+    const text = await readFile(document, "utf-8");
+    const splitter = new RecursiveCharacterTextSplitter({
+      chunkSize: 250,
+      chunkOverlap: 35,
+    });
+    const output = await splitter.createDocuments([text]);
+    return output;
+  } catch (e) {
+    console.error("There was an issue with splitting text");
+    throw e;
   }
-
-  const splitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 250,
-    chunkOverlap: 35,
-  });
-
-  const output = await splitter.createDocuments([text]);
-  return output;
 }
 
 /* Create an embedding from each text chunk.
 Store all embeddings and corresponding text in Supabase. */
 async function createAndStoreEmbeddings() {
-  const chunkData = await splitDocument("movies.txt");
+  try {
+    const chunkData = await splitDocument("movies.txt");
 
-  const embeddingResponse = await openai.embeddings.create({
-    model: "nvidia/llama-nemotron-embed-vl-1b-v2:free",
-    input: chunkData.map((chunk) => chunk.pageContent),
-  });
+    // Load the free Hugging Face embedding model locally
+    const embedder = await pipeline(
+      "feature-extraction",
+      "Xenova/all-MiniLM-L6-v2",
+      {
+        device: "cpu",
+        dtype: "q8",
+      },
+    );
 
-  const data = chunkData.map((chunk, i) => ({
-    content: chunk.pageContent,
-    embedding: embeddingResponse.data[i].embedding,
-  }));
+    const data = await Promise.all(
+      chunkData.map(async (chunk) => {
+        const embeddingResponse = await embedder(chunk.pageContent, {
+          pooling: "mean",
+          normalize: true,
+        });
 
-  const { error } = await supabase.from("documents").insert(data);
-  if (error) {
-    console.error("Error inserting into Supabase:", error);
-  } else {
-    console.log("SUCCESS! Embeddings created and stored in Supabase.");
+        return {
+          content: chunk.pageContent,
+          embedding: embeddingResponse.tolist()[0],
+        };
+      }),
+    );
+
+    const { error } = await supabase.from("movies").insert(data);
+    if (error) {
+      throw new Error(
+        "Issue inserting data into the database: " + error.message,
+      );
+    }
+    console.log("SUCCESS!");
+  } catch (e) {
+    console.error("ERRORs: " + e.message);
   }
-
-  // console.log(data)
 }
 
 createAndStoreEmbeddings();
 
-/**
- # Scrimba did it like this, provided below:
-import { openai, supabase } from './config.js';
-import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 
-# Split movies.txt into text chunks.
-# Return LangChain's "output" – the array of Document objects.
-async function splitDocument(document) {
-  const response = await fetch(document);
-  const text = await response.text();
-  const splitter = new RecursiveCharacterTextSplitter({
-    chunkSize: 250,
-    chunkOverlap: 35,
-  });
-  const output = await splitter.createDocuments([text]);
-  return output;
-}
 
-# Create an embedding from each text chunk.
-# Store all embeddings and corresponding text in Supabase.
-async function createAndStoreEmbeddings() {
-  const chunkData = await splitDocument("movies.txt");
-  const data = await Promise.all(
-    chunkData.map(async (chunk) => {
-      const embeddingResponse = await openai.embeddings.create({
-        model: "text-embedding-ada-002",
-        input: chunk.pageContent
-      });
-      return { 
-        content: chunk.pageContent, 
-        embedding: embeddingResponse.data[0].embedding 
-      }
-    })
-  );
-  await supabase.from('movies').insert(data);
-  console.log('SUCCESS!');
-}
-createAndStoreEmbeddings();
- */
+
+
+
+
+// the below codes was using openrouter free models, and the upper code is using the free Hugging Face embedding model. The upper code is more efficient and cost-effective since it does not require API calls to OpenAI or OpenRouter, and it can run locally without any external dependencies.
+
+// import { openai, supabase } from "./config.js";
+// import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
+// import { readFile } from "node:fs/promises";
+
+// /* Split movies.txt into text chunks.
+// Return LangChain's "output" – the array of Document objects. */
+// async function splitDocument(document) {
+//   try {
+//     // Read directly from disk in Node.js
+//     const text = await readFile(document, "utf-8");
+//     const splitter = new RecursiveCharacterTextSplitter({
+//       chunkSize: 250,
+//       chunkOverlap: 35,
+//     });
+//     const output = await splitter.createDocuments([text]);
+//     return output;
+//   } catch (e) {
+//     console.error("There was an issue with splitting text");
+//     throw e;
+//   }
+
+// }
+
+// /* Create an embedding from each text chunk.
+// Store all embeddings and corresponding text in Supabase. */
+// async function createAndStoreEmbeddings() {
+//   try {
+//     const chunkData = await splitDocument("movies.txt");
+//     const data = await Promise.all(
+//       chunkData.map(async (chunk) => {
+//         const embeddingResponse = await openai.embeddings.create({
+//           model: "nvidia/nemotron-3.5-embed-1b:free",
+//           input: chunk.pageContent,
+//         });
+//         return {
+//           content: chunk.pageContent,
+//           embedding: embeddingResponse.data[0].embedding,
+//         };
+//       }),
+//     );
+
+//     const { error } = await supabase.from("movies").insert(data);
+//     if (error) {
+//       throw new Error("Issue inserting data into the database.");
+//     }
+//     console.log("SUCCESS!");
+//   } catch (e) {
+//     console.error("ERRORs: " + e.message);
+//   }
+// }
+// createAndStoreEmbeddings();
