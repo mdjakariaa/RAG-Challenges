@@ -5,6 +5,8 @@ export default defineConfig(({ mode }) => {
   return {
     define: {
       "process.env.OPENROUTER_API_KEY": JSON.stringify(env.OPENROUTER_API_KEY || ""),
+      "process.env.SUPABASE_API_KEY": JSON.stringify(env.SUPABASE_API_KEY || ""),
+      "process.env.SUPABASE_URL": JSON.stringify(env.SUPABASE_URL || ""),
     },
   };
 });
